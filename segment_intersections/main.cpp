@@ -15,8 +15,8 @@ double RoundToPrecision(double value, double precision = 0.00001) {
 }
 
 struct TPoint {
-    double Y = 0;
     double X = 0;
+    double Y = 0;
 
     auto operator<=>(const TPoint&) const = default;
 };
@@ -24,6 +24,19 @@ struct TPoint {
 struct TSegment {
     TPoint Begin;
     TPoint End;
+
+    bool Contains(TPoint point) const
+    {
+        if (point.X > std::max(Begin.X, End.X)|| point.X < std::min(Begin.X, End.X)) {
+            return false;
+        }
+
+        if (point.Y < std::min(Begin.Y, End.Y) || point.Y > std::max(End.Y, Begin.X)) {
+            return false;
+        }
+
+        return true;
+    }
 
     auto operator<=>(const TSegment&) const = default;
 };
@@ -54,7 +67,7 @@ std::ostream& operator <<(std::ostream& stream, const std::set<TSegment>& segmen
 ///////////////////////////////////////////////////////////////////////
 
 struct TLineParameters {
-    double K = 0;
+    std::optional<double> K;
     double C = 0;
 
     auto operator<=>(const TLineParameters&) const = default;
@@ -63,9 +76,13 @@ struct TLineParameters {
 TLineParameters GetLineParameters(const TSegment& segment) {
     const auto& [p1, p2] = segment;
     double k = 0;
-    if (p2.X - p1.X != 0) {
-        k = static_cast<double>(p2.Y - p1.Y) / (p2.X - p1.X);
+    if (p2.X == p1.X) {
+        return TLineParameters {
+            .C = p1.X,
+        };
     }
+
+    k = static_cast<double>(p2.Y - p1.Y) / (p2.X - p1.X);
 
     double c = p1.Y - p1.X * k;
 
@@ -83,18 +100,36 @@ std::optional<TPoint> GetIntersection(const TSegment& s1, const TSegment& s2) {
         return {};
     }
 
-    auto x = (line2.C - line1.C) / (line1.K - line2.K);
-    auto y1 = RoundToPrecision(line1.K * x + line1.C);
-    auto y2 = RoundToPrecision(line2.K * x + line2.C);
+    double x = 0;
+    double y = 0;
 
-    if (y1 != y2) {
-        return {};
+    if (!line2.K) {
+        std::swap(line1, line2);
     }
 
-    return TPoint{
-        .Y = y1,
+    if (!line1.K) {
+        x = line1.C;
+        y = RoundToPrecision(*line2.K * x + line2.C);
+    } else {
+        x = (line2.C - line1.C) / (*line1.K - *line2.K);
+        y = RoundToPrecision(*line1.K * x + line1.C);
+        auto y2 = RoundToPrecision(*line2.K * x + line2.C);
+
+        if (y != y2) {
+            return {};
+        }
+    }
+
+    auto result = TPoint{
         .X = RoundToPrecision(x),
+        .Y = y,
     };
+
+    if (s1.Contains(result) && s2.Contains(result)) {
+        return result;
+    }
+
+    return {};
 }
 
 ///////////////////////////////////////////////////////////////////////
@@ -121,9 +156,9 @@ bool CheckTestCase(const TTest& testCases, const TIntersections& output) {
 
         if (expectedSegments != it->second) {
             passed = false;
-            std::cout << "Intersections at list does not match! Point: "
+            std::cout << "Intersections list at point does not match! Point: "
                 << point << " expected:" << expectedSegments
-                << point << " actual:" << it->second
+                << " actual:" << it->second
                 << std::endl;
         }
     }
@@ -165,13 +200,30 @@ TIntersections BruteForce(const std::vector<TSegment>& input) {
 //     pdd C = make_pair(1, 8);
 //     pdd D = make_pair(2, 4);
 int main() {
-    TTest test{
-        .Input = {{{1,1}, {4, 4}}, {{1, 8}, {2, 4}}},
-        .Expected = { {{RoundToPrecision(2.4), RoundToPrecision(2.4)}, {{{1,1}, {4, 4}}, {{1, 8}, {2, 4}}}}, },
+
+    std::vector<TTest> tests = {
+        {
+            .Input = {{{1,1}, {4, 4}}, {{8, 1}, {4, 2}}},
+            .Expected = {},
+        },
+        {
+            .Input = { {{1,1}, {4, 4}}, {{8, 1}, {0, 3}} },
+            .Expected = { {{RoundToPrecision(2.4), RoundToPrecision(2.4)}, {{{1,1}, {4, 4}}, {{8, 1}, {0, 3}}, }}},
+        },
+        {
+            .Input = {{{3,1}, {7, 5}}, {{5, 5}, {5, 0}}},
+            .Expected = { {{RoundToPrecision(5), RoundToPrecision(3)}, {{{{3,1}, {7, 5}}, {{5, 5}, {5, 0}}} }}},
+        },
+        {
+            .Input = {{{4,0}, {4, 4}}, {{0, 2}, {8, 2}}, {{0, -6}, {5, 4}}},
+            .Expected = { {{RoundToPrecision(4), RoundToPrecision(2)}, {{{{0, -6}, {5, 4}}, {{4,0}, {4, 4}}, {{0, 2}, {8, 2}}} }}},
+        },
     };
 
-    if (!CheckTestCase(test, BruteForce(test.Input))) {
-        return 1;
+    for (const auto& test : tests) {
+        if (!CheckTestCase(test, BruteForce(test.Input))) {
+            return 1;
+        }
     }
 
     std::cout << "OK" << std::endl;
