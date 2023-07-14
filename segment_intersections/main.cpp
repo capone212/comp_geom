@@ -6,6 +6,10 @@
 #include <optional>
 #include <ostream>
 #include <sstream>
+
+#include <unordered_map>
+#include <unordered_set>
+
 #include <vector>
 #include <set>
 #include <cmath>
@@ -58,6 +62,17 @@ std::ostream& operator <<(std::ostream& stream, const std::set<TSegment>& segmen
 
     for (const auto& segment : segments) {
         stream << segment << ", ";
+    }
+
+    stream << " }";
+    return stream;
+}
+
+std::ostream& operator <<(std::ostream& stream, const std::unordered_set<const TSegment*>& segments) {
+    stream << "{ ";
+
+    for (const auto* segment : segments) {
+        stream << *segment << ", ";
     }
 
     stream << " }";
@@ -195,12 +210,57 @@ TIntersections BruteForce(const std::vector<TSegment>& input) {
 }
 
 ///////////////////////////////////////////////////////////////////////
+
+struct TEvent
+{
+    std::unordered_set<const TSegment*> Starting;
+    std::unordered_set<const TSegment*> Ending;
+    std::unordered_set<const TSegment*> Intersecting;
+};
+
+struct TTrackingSegment
+{
+    const TSegment* Segment = nullptr;
+    int StartY = 0;
+
+    bool operator<(const TTrackingSegment& other) const {
+        return StartY < other.StartY;
+    }
+};
+
+struct TSweepingLine
+{
+    std::set<TTrackingSegment> Segments;
+};
+
+std::map<TPoint, TEvent> MakeEventQueue(const std::vector<TSegment>& input)
+{
+    std::map<TPoint, TEvent> result;
+    for (const auto& segment : input) {
+        result[segment.Begin].Starting.insert(&segment);
+        result[segment.End].Ending.insert(&segment);
+    }
+    return result;
+}
+
+TIntersections SweepLine(const std::vector<TSegment>& input)
+{
+    auto queue = MakeEventQueue(input);
+
+
+
+    return {};
+}
+
+
+///////////////////////////////////////////////////////////////////////
 //  pdd A = make_pair(1, 1);
 //     pdd B = make_pair(4, 4);
 //     pdd C = make_pair(1, 8);
 //     pdd D = make_pair(2, 4);
-int main() {
 
+int test()
+{
     std::vector<TTest> tests = {
         {
             .Input = {{{1,1}, {4, 4}}, {{8, 1}, {4, 2}}},
@@ -224,6 +284,44 @@ int main() {
         if (!CheckTestCase(test, BruteForce(test.Input))) {
             return 1;
         }
+    }
+
+    std::cout << "OK" << std::endl;
+    return 0;
+}
+
+int main() {
+
+    std::vector<TTest> tests = {
+        {
+            .Input = {{{1,1}, {4, 4}}, {{8, 1}, {4, 2}}},
+            .Expected = {},
+        },
+        {
+            .Input = { {{1,1}, {4, 4}}, {{8, 1}, {0, 3}} },
+            .Expected = { {{RoundToPrecision(2.4), RoundToPrecision(2.4)}, {{{1,1}, {4, 4}}, {{8, 1}, {0, 3}}, }}},
+        },
+        {
+            .Input = {{{3,1}, {7, 5}}, {{5, 5}, {5, 0}}},
+            .Expected = { {{RoundToPrecision(5), RoundToPrecision(3)}, {{{{3,1}, {7, 5}}, {{5, 5}, {5, 0}}} }}},
+        },
+        {
+            .Input = {{{4,0}, {4, 4}}, {{0, 2}, {8, 2}}, {{0, -6}, {5, 4}}},
+            .Expected = { {{RoundToPrecision(4), RoundToPrecision(2)}, {{{{0, -6}, {5, 4}}, {{4,0}, {4, 4}}, {{0, 2}, {8, 2}}} }}},
+        },
+    };
+
+    for (const auto& test : tests) {
+        auto queue = MakeEventQueue(test.Input);
+
+        for (const auto& [point, event] : queue) {
+            std::cout << "Event Point: " << point
+                << " Starting:" << event.Starting
+                << " Intersecting:" << event.Intersecting
+                << " Ending:" << event.Ending
+                << std::endl;
+        }
+        break;
     }
 
     std::cout << "OK" << std::endl;
