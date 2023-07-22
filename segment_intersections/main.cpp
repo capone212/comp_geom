@@ -394,21 +394,26 @@ TIntersections SweepLine(const std::vector<TSegment>& input)
 //     pdd D = make_pair(2, 4);
 
 
+void Normalize(TTest& testCase)
+{
+    for (auto& segment : testCase.Input) {
+        segment.Normalize();
+    }
+
+    for (auto& [point, segments] : testCase.Expected) {
+        std::set<TSegment> normalized;
+        for (auto segment : segments) {
+            segment.Normalize();
+            normalized.insert(segment);
+        }
+        normalized.swap(segments);
+    }
+}
+
 void Normalize(std::vector<TTest>& testCases)
 {
     for (auto& testCase : testCases) {
-        for (auto& segment : testCase.Input) {
-            segment.Normalize();
-        }
-
-        for (auto& [point, segments] : testCase.Expected) {
-            std::set<TSegment> normalized;
-            for (auto segment : segments) {
-                segment.Normalize();
-                normalized.insert(segment);
-            }
-            normalized.swap(segments);
-        }
+        Normalize(testCase);
     }
 }
 
