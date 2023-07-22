@@ -4,6 +4,7 @@
 
 #include <iterator>
 #include <map>
+#include <math.h>
 #include <optional>
 #include <ostream>
 #include <sstream>
@@ -18,7 +19,9 @@
 #include <cmath>
 #include <assert.h>
 
-double RoundToPrecision(double value, double precision = 0.00001) {
+static constexpr double Precision = 0.00001;
+
+double RoundToPrecision(double value, double precision = Precision) {
     return std::round(value / precision) * precision;
 }
 
@@ -28,6 +31,12 @@ struct TPoint
     double Y = 0;
 
     auto operator<=>(const TPoint&) const = default;
+
+    void Normalize()
+    {
+        X = RoundToPrecision(X);
+        Y = RoundToPrecision(Y);
+    }
 };
 
 struct TSegment
@@ -37,6 +46,9 @@ struct TSegment
 
     void Normalize()
     {
+        Begin.Normalize();
+        End.Normalize();
+
         if (End < Begin) {
             std::swap(Begin, End);
         }
@@ -71,6 +83,17 @@ std::ostream& operator <<(std::ostream& stream, const TSegment& segment) {
 }
 
 std::ostream& operator <<(std::ostream& stream, const std::set<TSegment>& segments) {
+    stream << "{ ";
+
+    for (const auto& segment : segments) {
+        stream << segment << ", ";
+    }
+
+    stream << " }";
+    return stream;
+}
+
+std::ostream& operator <<(std::ostream& stream, const std::vector<TSegment>& segments) {
     stream << "{ ";
 
     for (const auto& segment : segments) {
@@ -219,8 +242,8 @@ bool CheckTestCase(const TTest& testCases, const TIntersections& output) {
 
 TIntersections BruteForce(const std::vector<TSegment>& input) {
     TIntersections result;
-    for (int i = 0; i < input.size(); ++i) {
-        for (int j = 1; j < input.size(); ++j) {
+    for (int i = 0; i < std::ssize(input); ++i) {
+        for (int j = 1; j < std::ssize(input); ++j) {
             auto point = GetIntersection(input[i], input[j]);
             if (!point) {
                 continue;
@@ -246,9 +269,9 @@ struct TTrackingSegment
 {
     const TSegment* Segment = nullptr;
     TLineParameters Parameters;
-    int StartX = 0;
+    double StartX = 0;
 
-    TTrackingSegment(const TSegment* segment, int startX)
+    TTrackingSegment(const TSegment* segment, double startX)
         : Segment(segment)
         , Parameters(GetLineParameters(*segment))
         , StartX(startX)
@@ -282,11 +305,11 @@ struct TSweepingLine
     TSegmentsTree Segments;
     std::unordered_map<const TSegment*, TSegmentsTree::iterator> Index;
 
-    void Add(const TSegment* segment, int startX)
+    void Add(const TSegment* segment, double startX)
     {
         Verify(Index.count(segment) == 0);
         auto it = Segments.insert(TTrackingSegment(segment, startX));
-        auto result = Index.insert(std::make_pair(segment, it));
+        Index.insert(std::make_pair(segment, it));
     }
 
     void Remove(const TSegment* segment)
@@ -360,7 +383,7 @@ TIntersections SweepLine(const std::vector<TSegment>& input)
 
     while(!queue.empty()) {
         auto current = queue.begin();
-        auto [eventPoint, event] = *current;
+        const auto& [eventPoint, event] = *current;
 
         for (const auto* segment : event.Starting) {
             addSegment(segment, eventPoint);
@@ -372,6 +395,8 @@ TIntersections SweepLine(const std::vector<TSegment>& input)
         }
 
         for (const auto* segment : event.Intersecting) {
+            // auto moved = eventPoint;
+            // moved.X += Precision;
             addSegment(segment, eventPoint);
         }
 
@@ -411,6 +436,62 @@ void Normalize(std::vector<TTest>& testCases)
     }
 }
 
+double RandomInRange(int min, int max)
+{
+    int total = std::abs(min) + max;
+    return rand() % total - std::abs(min);
+}
+
+TPoint RandomPoint(int min, int max)
+{
+    return {.X = RandomInRange(min, max), .Y = RandomInRange(min, max)};
+}
+
+int StressTest()
+{
+    static const int SegmentsCount = 3;
+    static const int TestsCount = 100;
+
+    int minValue = -10;
+    int maxValue = 10;
+
+    for (int i = 0; i < TestsCount; ++i) {
+        std::unordered_set<double> uniqueness;
+        TTest testCase;
+
+        for (int segmentIndex = 0; segmentIndex < SegmentsCount; ++segmentIndex) {
+            TSegment segment {
+                .Begin = RandomPoint(minValue, maxValue),
+                .End = RandomPoint(minValue, maxValue),
+            };
+
+            segment.Normalize();
+            auto parameters = GetLineParameters(segment);
+            if (!parameters.K) {
+                continue;
+            }
+
+            if (!uniqueness.insert(*parameters.K).second) {
+                continue;
+            }
+
+            testCase.Input.push_back(std::move(segment));
+            testCase.Expected = BruteForce(testCase.Input);
+            if (!CheckTestCase(testCase, SweepLine(testCase.Input))) {
+                std::cout << "Input: " << testCase.Input << std::endl;
+
+                for (const auto& [point, segments] : testCase.Expected) {
+                    std::cout << "Intersection : " << point  << " segments: " << segments << std::endl;
+                }
+                return 1;
+            }
+        }
+    }
+
+    std::cout << "OK" << std::endl;
+    return 0;
+}
+
 int test()
 {
     std::vector<TTest> tests = {
@@ -430,9 +511,50 @@ int test()
             .Input = {{{4,0}, {4, 4}}, {{0, 2}, {8, 2}}, {{0, -6}, {5, 4}}},
             .Expected = { {{RoundToPrecision(4), RoundToPrecision(2)}, {{{{0, -6}, {5, 4}}, {{4,0}, {4, 4}}, {{0, 2}, {8, 2}}} }}},
         },
+        {
+            .Input = {{{3, -4}, {5, 0}}, {{1, -10}, {6, 3}}, {{-8, 0}, {6, -9}}},
+            .Expected = {
+                {{RoundToPrecision(2.29956), RoundToPrecision(-6.62115)}, {{{{-8, 0}, {6, -9}}, {{1, -10}, {6, 3}}, } }},
+                {{RoundToPrecision(4.33333), RoundToPrecision(-1.33333)}, {{{{1, -10}, {6, 3}}, {{3, -4}, {5, 0}}, } }}
+            },
+        },
+        {
+            .Input = {{{3, -4}, {5, 0}}, {{1, -10}, {6, 3}}, {{-8, 0}, {6, -9}}},
+            .Expected = {
+                {{RoundToPrecision(2.29956), RoundToPrecision(-6.62115)}, {{{{-8, 0}, {6, -9}}, {{1, -10}, {6, 3}}, } }},
+                {{RoundToPrecision(4.33333), RoundToPrecision(-1.33333)}, {{{{1, -10}, {6, 3}}, {{3, -4}, {5, 0}}, } }}
+            },
+        },
+        {
+            .Input = {{{3, 4}, {7, 0}}, {{-7, 4}, {4, 3}}, },
+            .Expected = {
+                {{RoundToPrecision(4), RoundToPrecision(3)}, {{{{3, 4}, {7, 0}}, {{-7, 4}, {4, 3}}, } }},
+            },
+        },
+        {
+            .Input = {{{-4, 0}, {-1, 9}}, {{-1, 9}, {6, -6}},},
+            .Expected = {
+                {{RoundToPrecision(-1), RoundToPrecision(9)}, {{ {{-4, 0}, {-1, 9}}, {{-1, 9}, {6, -6}}, } }},
+            },
+        },
     };
 
     Normalize(tests);
+
+    const auto& test = tests.front();
+
+    // auto s1 = test.Input[2];
+    // auto s2 = test.Input[1];
+
+    // auto pointX = RoundToPrecision(2.29956);
+    // TTrackingSegment ts1(&s1, pointX);
+    // TTrackingSegment ts2(&s2, pointX);
+
+    // bool result = ts1 < ts2;
+    // std::cout << result << std::endl;
+
+    // std::cout << "ts1: " << *ts1.Parameters.GetAtX(pointX) << std::endl; 
+    // std::cout << "ts2: " << *ts2.Parameters.GetAtX(pointX) << std::endl;
 
     for (const auto& test : tests) {
         if (!CheckTestCase(test, SweepLine(test.Input))) {
@@ -445,5 +567,5 @@ int test()
 }
 
 int main() {
-    return test();
+    return StressTest();
 }
