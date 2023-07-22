@@ -22,14 +22,16 @@ double RoundToPrecision(double value, double precision = 0.00001) {
     return std::round(value / precision) * precision;
 }
 
-struct TPoint {
+struct TPoint
+{
     double X = 0;
     double Y = 0;
 
     auto operator<=>(const TPoint&) const = default;
 };
 
-struct TSegment {
+struct TSegment
+{
     TPoint Begin;
     TPoint End;
 
@@ -92,7 +94,8 @@ std::ostream& operator <<(std::ostream& stream, const std::unordered_set<const T
 
 ///////////////////////////////////////////////////////////////////////
 
-struct TLineParameters {
+struct TLineParameters
+{
     std::optional<double> K;
     double C = 0;
 
@@ -171,7 +174,8 @@ std::optional<TPoint> GetIntersection(const TSegment& s1, const TSegment& s2) {
 
 using TIntersections = std::map<TPoint, std::set<TSegment>>;
 
-struct TTest {
+struct TTest
+{
     std::vector<TSegment> Input;
     TIntersections Expected;
 };
@@ -248,8 +252,7 @@ struct TTrackingSegment
         : Segment(segment)
         , Parameters(GetLineParameters(*segment))
         , StartX(startX)
-    {
-    }
+    { }
 
     bool operator<(const TTrackingSegment& other) const {
         auto startX = std::max(StartX, other.StartX);
@@ -260,7 +263,6 @@ struct TTrackingSegment
 
         auto rightStart = other.Parameters.GetAtX(startX);
         auto rightEnd = other.Parameters.GetAtX(endX);
-
 
         return std::make_pair(*leftStart, *leftEnd) < std::make_pair(*rightStart, *rightEnd);
     }
@@ -333,7 +335,6 @@ TIntersections SweepLine(const std::vector<TSegment>& input)
 {
     auto queue = MakeEventQueue(input);
     TSweepingLine sweepLine;
-
     TIntersections result;
 
     auto addSegment = [&] (const TSegment* segment, const TPoint& eventPoint) {
@@ -356,7 +357,6 @@ TIntersections SweepLine(const std::vector<TSegment>& input)
             item.Intersecting.insert(neighbor);
         }
     };
-
 
     while(!queue.empty()) {
         auto current = queue.begin();
@@ -386,13 +386,7 @@ TIntersections SweepLine(const std::vector<TSegment>& input)
     return result;
 }
 
-
 ///////////////////////////////////////////////////////////////////////
-//  pdd A = make_pair(1, 1);
-//     pdd B = make_pair(4, 4);
-//     pdd C = make_pair(1, 8);
-//     pdd D = make_pair(2, 4);
-
 
 void Normalize(TTest& testCase)
 {
@@ -449,44 +443,6 @@ int test()
     std::cout << "OK" << std::endl;
     return 0;
 }
-
-// int main() {
-
-//     std::vector<TTest> tests = {
-//         {
-//             .Input = {{{1,1}, {4, 4}}, {{8, 1}, {4, 2}}},
-//             .Expected = {},
-//         },
-//         {
-//             .Input = { {{1,1}, {4, 4}}, {{8, 1}, {0, 3}} },
-//             .Expected = { {{RoundToPrecision(2.4), RoundToPrecision(2.4)}, {{{1,1}, {4, 4}}, {{8, 1}, {0, 3}}, }}},
-//         },
-//         {
-//             .Input = {{{3,1}, {7, 5}}, {{5, 5}, {5, 0}}},
-//             .Expected = { {{RoundToPrecision(5), RoundToPrecision(3)}, {{{{3,1}, {7, 5}}, {{5, 5}, {5, 0}}} }}},
-//         },
-//         {
-//             .Input = {{{4,0}, {4, 4}}, {{0, 2}, {8, 2}}, {{0, -6}, {5, 4}}},
-//             .Expected = { {{RoundToPrecision(4), RoundToPrecision(2)}, {{{{0, -6}, {5, 4}}, {{4,0}, {4, 4}}, {{0, 2}, {8, 2}}} }}},
-//         },
-//     };
-
-//     for (const auto& test : tests) {
-//         auto queue = MakeEventQueue(test.Input);
-
-//         for (const auto& [point, event] : queue) {
-//             std::cout << "Event Point: " << point
-//                 << " Starting:" << event.Starting
-//                 << " Intersecting:" << event.Intersecting
-//                 << " Ending:" << event.Ending
-//                 << std::endl;
-//         }
-//         break;
-//     }
-
-//     std::cout << "OK" << std::endl;
-//     return 0;
-// }
 
 int main() {
     return test();
