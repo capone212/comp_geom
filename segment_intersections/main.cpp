@@ -2,17 +2,21 @@
 #include <compare>
 #include <iostream>
 
+#include <iterator>
 #include <map>
 #include <optional>
 #include <ostream>
 #include <sstream>
 
+#include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
 
+#include <utility>
 #include <vector>
 #include <set>
 #include <cmath>
+#include <assert.h>
 
 double RoundToPrecision(double value, double precision = 0.00001) {
     return std::round(value / precision) * precision;
@@ -29,13 +33,20 @@ struct TSegment {
     TPoint Begin;
     TPoint End;
 
+    void Normalize()
+    {
+        if (End < Begin) {
+            std::swap(Begin, End);
+        }
+    }
+
     bool Contains(TPoint point) const
     {
-        if (point.X > std::max(Begin.X, End.X)|| point.X < std::min(Begin.X, End.X)) {
+        if (point.X > std::max(Begin.X, End.X) || point.X < std::min(Begin.X, End.X)) {
             return false;
         }
 
-        if (point.Y < std::min(Begin.Y, End.Y) || point.Y > std::max(End.Y, Begin.X)) {
+        if (point.Y < std::min(Begin.Y, End.Y) || point.Y > std::max(Begin.Y, End.Y)) {
             return false;
         }
 
@@ -86,6 +97,15 @@ struct TLineParameters {
     double C = 0;
 
     auto operator<=>(const TLineParameters&) const = default;
+
+    std::optional<double> GetAtX(double x) const
+    {
+        if (!K) {
+            return {};
+        }
+
+        return RoundToPrecision(*K * x + C);
+    }
 };
 
 TLineParameters GetLineParameters(const TSegment& segment) {
@@ -214,23 +234,89 @@ TIntersections BruteForce(const std::vector<TSegment>& input) {
 struct TEvent
 {
     std::unordered_set<const TSegment*> Starting;
-    std::unordered_set<const TSegment*> Ending;
     std::unordered_set<const TSegment*> Intersecting;
+    std::unordered_set<const TSegment*> Ending;
 };
 
 struct TTrackingSegment
 {
     const TSegment* Segment = nullptr;
-    int StartY = 0;
+    TLineParameters Parameters;
+    int StartX = 0;
+
+    TTrackingSegment(const TSegment* segment, int startX)
+        : Segment(segment)
+        , Parameters(GetLineParameters(*segment))
+        , StartX(startX)
+    {
+    }
 
     bool operator<(const TTrackingSegment& other) const {
-        return StartY < other.StartY;
+        auto startX = std::max(StartX, other.StartX);
+        auto endX = std::max(Segment->End.X, other.Segment->End.X);
+        
+        auto leftStart = Parameters.GetAtX(startX);
+        auto leftEnd = Parameters.GetAtX(endX);
+
+        auto rightStart = other.Parameters.GetAtX(startX);
+        auto rightEnd = other.Parameters.GetAtX(endX);
+
+
+        return std::make_pair(*leftStart, *leftEnd) < std::make_pair(*rightStart, *rightEnd);
     }
 };
 
+void Verify(bool predicate)
+{
+    if (!predicate) {
+        throw std::runtime_error("Critical condition is failed");
+    }
+}
+
 struct TSweepingLine
 {
-    std::set<TTrackingSegment> Segments;
+    using TSegmentsTree = std::multiset<TTrackingSegment>;
+
+    TSegmentsTree Segments;
+    std::unordered_map<const TSegment*, TSegmentsTree::iterator> Index;
+
+    void Add(const TSegment* segment, int startX)
+    {
+        Verify(Index.count(segment) == 0);
+        auto it = Segments.insert(TTrackingSegment(segment, startX));
+        auto result = Index.insert(std::make_pair(segment, it));
+    }
+
+    void Remove(const TSegment* segment)
+    {
+        auto it = Index.find(segment);
+        Verify(it != Index.end());
+
+        Segments.erase(it->second);
+        Index.erase(it);
+    }
+
+    std::array<const TSegment*, 2> GetNeighbors(const TSegment* segment)
+    {
+        auto indexIt = Index.find(segment);
+        Verify(indexIt != Index.end());
+
+        auto it = indexIt->second;
+
+        std::array<const TSegment*, 2> result = {};
+
+        if (it != Segments.begin()) {
+            auto before = std::prev(it);
+            result[0] = before->Segment;
+        }
+
+        auto after = std::next(it);
+        if (after != Segments.end()) {
+            result[1] = after->Segment;
+        }
+
+        return result;
+    }
 };
 
 std::map<TPoint, TEvent> MakeEventQueue(const std::vector<TSegment>& input)
@@ -246,10 +332,58 @@ std::map<TPoint, TEvent> MakeEventQueue(const std::vector<TSegment>& input)
 TIntersections SweepLine(const std::vector<TSegment>& input)
 {
     auto queue = MakeEventQueue(input);
+    TSweepingLine sweepLine;
+
+    TIntersections result;
+
+    auto addSegment = [&] (const TSegment* segment, const TPoint& eventPoint) {
+        sweepLine.Add(segment, eventPoint.X);
+
+        for (const auto* neighbor : sweepLine.GetNeighbors(segment)) {
+            if (neighbor == nullptr) {
+                continue;
+            }
+
+            auto intersection = GetIntersection(*segment, *neighbor);
+
+            if (!intersection || *intersection < eventPoint) {
+                continue;
+            }
+
+            auto& item = queue[*intersection];
+
+            item.Intersecting.insert(segment);
+            item.Intersecting.insert(neighbor);
+        }
+    };
 
 
+    while(!queue.empty()) {
+        auto current = queue.begin();
+        auto [eventPoint, event] = *current;
 
-    return {};
+        for (const auto* segment : event.Starting) {
+            addSegment(segment, eventPoint);
+        }
+
+        for (const auto* segment : event.Intersecting) {
+            result[eventPoint].insert(*segment);
+            sweepLine.Remove(segment);
+        }
+
+        for (const auto* segment : event.Intersecting) {
+            addSegment(segment, eventPoint);
+        }
+
+        for (const auto* segment : event.Ending) {
+            sweepLine.Remove(segment);
+        }
+
+        Verify(queue.begin() == current);
+        queue.erase(current);
+    }
+
+    return result;
 }
 
 
@@ -258,6 +392,25 @@ TIntersections SweepLine(const std::vector<TSegment>& input)
 //     pdd B = make_pair(4, 4);
 //     pdd C = make_pair(1, 8);
 //     pdd D = make_pair(2, 4);
+
+
+void Normalize(std::vector<TTest>& testCases)
+{
+    for (auto& testCase : testCases) {
+        for (auto& segment : testCase.Input) {
+            segment.Normalize();
+        }
+
+        for (auto& [point, segments] : testCase.Expected) {
+            std::set<TSegment> normalized;
+            for (auto segment : segments) {
+                segment.Normalize();
+                normalized.insert(segment);
+            }
+            normalized.swap(segments);
+        }
+    }
+}
 
 int test()
 {
@@ -280,8 +433,10 @@ int test()
         },
     };
 
+    Normalize(tests);
+
     for (const auto& test : tests) {
-        if (!CheckTestCase(test, BruteForce(test.Input))) {
+        if (!CheckTestCase(test, SweepLine(test.Input))) {
             return 1;
         }
     }
@@ -290,40 +445,44 @@ int test()
     return 0;
 }
 
+// int main() {
+
+//     std::vector<TTest> tests = {
+//         {
+//             .Input = {{{1,1}, {4, 4}}, {{8, 1}, {4, 2}}},
+//             .Expected = {},
+//         },
+//         {
+//             .Input = { {{1,1}, {4, 4}}, {{8, 1}, {0, 3}} },
+//             .Expected = { {{RoundToPrecision(2.4), RoundToPrecision(2.4)}, {{{1,1}, {4, 4}}, {{8, 1}, {0, 3}}, }}},
+//         },
+//         {
+//             .Input = {{{3,1}, {7, 5}}, {{5, 5}, {5, 0}}},
+//             .Expected = { {{RoundToPrecision(5), RoundToPrecision(3)}, {{{{3,1}, {7, 5}}, {{5, 5}, {5, 0}}} }}},
+//         },
+//         {
+//             .Input = {{{4,0}, {4, 4}}, {{0, 2}, {8, 2}}, {{0, -6}, {5, 4}}},
+//             .Expected = { {{RoundToPrecision(4), RoundToPrecision(2)}, {{{{0, -6}, {5, 4}}, {{4,0}, {4, 4}}, {{0, 2}, {8, 2}}} }}},
+//         },
+//     };
+
+//     for (const auto& test : tests) {
+//         auto queue = MakeEventQueue(test.Input);
+
+//         for (const auto& [point, event] : queue) {
+//             std::cout << "Event Point: " << point
+//                 << " Starting:" << event.Starting
+//                 << " Intersecting:" << event.Intersecting
+//                 << " Ending:" << event.Ending
+//                 << std::endl;
+//         }
+//         break;
+//     }
+
+//     std::cout << "OK" << std::endl;
+//     return 0;
+// }
+
 int main() {
-
-    std::vector<TTest> tests = {
-        {
-            .Input = {{{1,1}, {4, 4}}, {{8, 1}, {4, 2}}},
-            .Expected = {},
-        },
-        {
-            .Input = { {{1,1}, {4, 4}}, {{8, 1}, {0, 3}} },
-            .Expected = { {{RoundToPrecision(2.4), RoundToPrecision(2.4)}, {{{1,1}, {4, 4}}, {{8, 1}, {0, 3}}, }}},
-        },
-        {
-            .Input = {{{3,1}, {7, 5}}, {{5, 5}, {5, 0}}},
-            .Expected = { {{RoundToPrecision(5), RoundToPrecision(3)}, {{{{3,1}, {7, 5}}, {{5, 5}, {5, 0}}} }}},
-        },
-        {
-            .Input = {{{4,0}, {4, 4}}, {{0, 2}, {8, 2}}, {{0, -6}, {5, 4}}},
-            .Expected = { {{RoundToPrecision(4), RoundToPrecision(2)}, {{{{0, -6}, {5, 4}}, {{4,0}, {4, 4}}, {{0, 2}, {8, 2}}} }}},
-        },
-    };
-
-    for (const auto& test : tests) {
-        auto queue = MakeEventQueue(test.Input);
-
-        for (const auto& [point, event] : queue) {
-            std::cout << "Event Point: " << point
-                << " Starting:" << event.Starting
-                << " Intersecting:" << event.Intersecting
-                << " Ending:" << event.Ending
-                << std::endl;
-        }
-        break;
-    }
-
-    std::cout << "OK" << std::endl;
-    return 0;
+    return test();
 }
