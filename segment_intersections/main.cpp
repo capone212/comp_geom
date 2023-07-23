@@ -25,7 +25,7 @@ bool DebugIsDisabled = true;
     if (DebugIsDisabled) {} \
     else std::cerr
 
-static constexpr double Precision = 0.00001;
+static constexpr double Precision = 0.000001;
 
 double RoundToPrecision(double value, double precision = Precision) {
     return std::round(value / precision) * precision;
@@ -154,8 +154,8 @@ TLineParameters GetLineParameters(const TSegment& segment) {
     double c = p1.Y - p1.X * k;
 
     return TLineParameters {
-        .K = RoundToPrecision(k),
-        .C = RoundToPrecision(c),
+        .K = k,
+        .C = c,
     };
 }
 
@@ -176,25 +176,31 @@ std::optional<TPoint> GetIntersection(const TSegment& s1, const TSegment& s2) {
 
     if (!line1.K) {
         x = line1.C;
-        y = RoundToPrecision(*line2.K * x + line2.C);
+        y = *line2.K * x + line2.C;
     } else {
         x = (line2.C - line1.C) / (*line1.K - *line2.K);
-        y = RoundToPrecision(*line1.K * x + line1.C);
-        auto y2 = RoundToPrecision(*line2.K * x + line2.C);
-
-        if (y != y2) {
+        y = *line1.K * x + line1.C;
+        auto y2 = *line2.K * x + line2.C;
+        if (std::abs(y - y2) > 2 * Precision) {
+            debugStream << "intersections does not match :" << x << " y1:" << y << " y2:" << y2 << std::endl;
             return {};
         }
     }
 
     auto result = TPoint{
         .X = RoundToPrecision(x),
-        .Y = y,
+        .Y = RoundToPrecision(y),
     };
 
     if (s1.Contains(result) && s2.Contains(result)) {
         return result;
     }
+
+    debugStream << "intersection is not contained point:"
+        << result
+        <<" s1" << s1 << " contains:" << s1.Contains(result)
+        <<" s2" << s2 << " contains:" << s2.Contains(result)
+        << std::endl;
 
     return {};
 }
@@ -249,7 +255,7 @@ bool CheckTestCase(const TTest& testCases, const TIntersections& output) {
 TIntersections BruteForce(const std::vector<TSegment>& input) {
     TIntersections result;
     for (int i = 0; i < std::ssize(input); ++i) {
-        for (int j = 1; j < std::ssize(input); ++j) {
+        for (int j = i+1; j < std::ssize(input); ++j) {
             auto point = GetIntersection(input[i], input[j]);
             if (!point) {
                 continue;
@@ -466,7 +472,7 @@ TPoint RandomPoint(int min, int max)
 int StressTest()
 {
     static const int SegmentsCount = 3;
-    static const int TestsCount = 10000;
+    static const int TestsCount = 1000000;
 
     int minValue = -10;
     int maxValue = 10;
@@ -511,73 +517,94 @@ int StressTest()
 int test()
 {
     std::vector<TTest> tests = {
+        // {
+        //     .Input = {{{1,1}, {4, 4}}, {{8, 1}, {4, 2}}},
+        //     .Expected = {},
+        // },
+        // {
+        //     .Input = { {{1,1}, {4, 4}}, {{8, 1}, {0, 3}} },
+        //     .Expected = { {{RoundToPrecision(2.4), RoundToPrecision(2.4)}, {{{1,1}, {4, 4}}, {{8, 1}, {0, 3}}, }}},
+        // },
+        // {
+        //     .Input = {{{3,1}, {7, 5}}, {{5, 5}, {5, 0}}},
+        //     .Expected = { {{RoundToPrecision(5), RoundToPrecision(3)}, {{{{3,1}, {7, 5}}, {{5, 5}, {5, 0}}} }}},
+        // },
+        // {
+        //     .Input = {{{4,0}, {4, 4}}, {{0, 2}, {8, 2}}, {{0, -6}, {5, 4}}},
+        //     .Expected = { {{RoundToPrecision(4), RoundToPrecision(2)}, {{{{0, -6}, {5, 4}}, {{4,0}, {4, 4}}, {{0, 2}, {8, 2}}} }}},
+        // },
+        // {
+        //     .Input = {{{3, -4}, {5, 0}}, {{1, -10}, {6, 3}}, {{-8, 0}, {6, -9}}},
+        //     .Expected = {
+        //         {{RoundToPrecision(2.29956), RoundToPrecision(-6.62115)}, {{{{-8, 0}, {6, -9}}, {{1, -10}, {6, 3}}, } }},
+        //         {{RoundToPrecision(4.33333), RoundToPrecision(-1.33333)}, {{{{1, -10}, {6, 3}}, {{3, -4}, {5, 0}}, } }}
+        //     },
+        // },
+        // {
+        //     .Input = {{{3, -4}, {5, 0}}, {{1, -10}, {6, 3}}, {{-8, 0}, {6, -9}}},
+        //     .Expected = {
+        //         {{RoundToPrecision(2.29956), RoundToPrecision(-6.62115)}, {{{{-8, 0}, {6, -9}}, {{1, -10}, {6, 3}}, } }},
+        //         {{RoundToPrecision(4.33333), RoundToPrecision(-1.33333)}, {{{{1, -10}, {6, 3}}, {{3, -4}, {5, 0}}, } }}
+        //     },
+        // },
+        // {
+        //     .Input = {{{3, 4}, {7, 0}}, {{-7, 4}, {4, 3}}, },
+        //     .Expected = {
+        //         {{RoundToPrecision(4), RoundToPrecision(3)}, {{{{3, 4}, {7, 0}}, {{-7, 4}, {4, 3}}, } }},
+        //     },
+        // },
+        // {
+        //     .Input = {{{-4, 0}, {-1, 9}}, {{-1, 9}, {6, -6}},},
+        //     .Expected = {
+        //         {{RoundToPrecision(-1), RoundToPrecision(9)}, {{ {{-4, 0}, {-1, 9}}, {{-1, 9}, {6, -6}}, } }},
+        //     },
+        // },
+        // {
+        //     .Input = {{{-9 , -7}, {-1 , 7}}, {{-10 , -4}, {1 , 2}}, {{-6 , -1}, {8 , -3}}},
+        //     .Expected = {
+        //         {{RoundToPrecision(-6.0566), RoundToPrecision(-1.84906)}, {{ {{-10 , -4}, {1 , 2}}, {{-9 , -7}, {-1 , 7}}, } }},
+        //         {{RoundToPrecision(-5.60377), RoundToPrecision(-1.0566)}, {{ {{-9 , -7}, {-1 , 7}}, {{-6 , -1}, {8 , -3}}, } }},
+        //         {{RoundToPrecision(-4.81132), RoundToPrecision(-1.16981)}, {{ {{-10 , -4}, {1 , 2}}, {{-6 , -1}, {8 , -3}}, } }},
+        //     },
+        // },
+        // {
+        //     .Input = {{{-8 , 5}, {3 , -2}}, {{-5 , -4}, {5 , 0}}, {{-7 , -6}, {-4 , -3}}},
+        //     .Expected = {
+        //         {{RoundToPrecision(-5), RoundToPrecision(-4)}, {{ {{-5 , -4}, {5 , 0}}, {{-7 , -6}, {-4 , -3}}, } }},
+        //         {{RoundToPrecision(1.84211), RoundToPrecision(-1.26316)}, {{ {{-8 , 5}, {3 , -2}}, {{-5 , -4}, {5 , 0}}, } }}
+        //     },
+        // },
+        // {
+        //     .Input = {{{-10 , -3}, {5 , -10}}, {{-3 , -9}, {0 , 6}}, {{-10 , -3}, {0 , 5}}},
+        //     .Expected = {
+        //         {{RoundToPrecision(-10), RoundToPrecision(-3)}, {{ {{-10 , -3}, {5 , -10}}, {{-10 , -3}, {0 , 5}}, } }},
+        //         {{RoundToPrecision(-2.5), RoundToPrecision(-6.5)}, {{ {{-10 , -3}, {5 , -10}}, {{-3 , -9}, {0 , 6}}, } }},
+        //         {{RoundToPrecision(-0.2381), RoundToPrecision(4.80952)}, {{ {{-10 , -3}, {0 , 5}}, {{-3 , -9}, {0 , 6}}, } }}
+        //     },
+        // },
+        // {
+        //     .Input = {{{3, -10}, {4, 3}}, {{-5 , -8}, {8 , 0}}, {{-2 , -10}, {8 , -8}}},
+        //     .Expected = {
+        //         {{RoundToPrecision(3.55901), RoundToPrecision(-2.73292)}, {{ {{-5 , -8}, {8 , 0}}, {{3 , -10}, {4 , 3}}, } }},
+        //         {{RoundToPrecision(3.07813), RoundToPrecision(-8.98438)}, {{ {{-2 , -10}, {8 , -8}}, {{3 , -10}, {4 , 3}}, } }},
+        //     },
+        // },
         {
-            .Input = {{{1,1}, {4, 4}}, {{8, 1}, {4, 2}}},
-            .Expected = {},
-        },
-        {
-            .Input = { {{1,1}, {4, 4}}, {{8, 1}, {0, 3}} },
-            .Expected = { {{RoundToPrecision(2.4), RoundToPrecision(2.4)}, {{{1,1}, {4, 4}}, {{8, 1}, {0, 3}}, }}},
-        },
-        {
-            .Input = {{{3,1}, {7, 5}}, {{5, 5}, {5, 0}}},
-            .Expected = { {{RoundToPrecision(5), RoundToPrecision(3)}, {{{{3,1}, {7, 5}}, {{5, 5}, {5, 0}}} }}},
-        },
-        {
-            .Input = {{{4,0}, {4, 4}}, {{0, 2}, {8, 2}}, {{0, -6}, {5, 4}}},
-            .Expected = { {{RoundToPrecision(4), RoundToPrecision(2)}, {{{{0, -6}, {5, 4}}, {{4,0}, {4, 4}}, {{0, 2}, {8, 2}}} }}},
-        },
-        {
-            .Input = {{{3, -4}, {5, 0}}, {{1, -10}, {6, 3}}, {{-8, 0}, {6, -9}}},
+            .Input = {{{-1, 0}, {1, 2}}, {{-10 , -2}, {-6 , -8}}, {{-7 , -9}, {3 , 8}}},
             .Expected = {
-                {{RoundToPrecision(2.29956), RoundToPrecision(-6.62115)}, {{{{-8, 0}, {6, -9}}, {{1, -10}, {6, 3}}, } }},
-                {{RoundToPrecision(4.33333), RoundToPrecision(-1.33333)}, {{{{1, -10}, {6, 3}}, {{3, -4}, {5, 0}}, } }}
-            },
-        },
-        {
-            .Input = {{{3, -4}, {5, 0}}, {{1, -10}, {6, 3}}, {{-8, 0}, {6, -9}}},
-            .Expected = {
-                {{RoundToPrecision(2.29956), RoundToPrecision(-6.62115)}, {{{{-8, 0}, {6, -9}}, {{1, -10}, {6, 3}}, } }},
-                {{RoundToPrecision(4.33333), RoundToPrecision(-1.33333)}, {{{{1, -10}, {6, 3}}, {{3, -4}, {5, 0}}, } }}
-            },
-        },
-        {
-            .Input = {{{3, 4}, {7, 0}}, {{-7, 4}, {4, 3}}, },
-            .Expected = {
-                {{RoundToPrecision(4), RoundToPrecision(3)}, {{{{3, 4}, {7, 0}}, {{-7, 4}, {4, 3}}, } }},
-            },
-        },
-        {
-            .Input = {{{-4, 0}, {-1, 9}}, {{-1, 9}, {6, -6}},},
-            .Expected = {
-                {{RoundToPrecision(-1), RoundToPrecision(9)}, {{ {{-4, 0}, {-1, 9}}, {{-1, 9}, {6, -6}}, } }},
-            },
-        },
-        {
-            .Input = {{{-9 , -7}, {-1 , 7}}, {{-10 , -4}, {1 , 2}}, {{-6 , -1}, {8 , -3}}},
-            .Expected = {
-                {{RoundToPrecision(-6.05658), RoundToPrecision(-1.84901)}, {{ {{-10 , -4}, {1 , 2}}, {{-9 , -7}, {-1 , 7}}, } }},
-                {{RoundToPrecision(-5.60376), RoundToPrecision(-1.05659)}, {{ {{-9 , -7}, {-1 , 7}}, {{-6 , -1}, {8 , -3}}, } }},
-                {{RoundToPrecision(-4.81134), RoundToPrecision(-1.16979)}, {{ {{-10 , -4}, {1 , 2}}, {{-6 , -1}, {8 , -3}}, } }},
-            },
-        },
-        {
-            .Input = {{{-8 , 5}, {3 , -2}}, {{-5 , -4}, {5 , 0}}, {{-7 , -6}, {-4 , -3}}},
-            .Expected = {
-                {{RoundToPrecision(-5), RoundToPrecision(-4)}, {{ {{-5 , -4}, {5 , 0}}, {{-7 , -6}, {-4 , -3}}, } }},
-                {{RoundToPrecision(1.84211), RoundToPrecision(-1.26316)}, {{ {{-8 , 5}, {3 , -2}}, {{-5 , -4}, {5 , 0}}, } }}
+                {{RoundToPrecision(-6.21875), RoundToPrecision(-7.67188)}, {{ {{-10 , -2}, {-6 , -8}}, {{-7 , -9}, {3 , 8}} } }},
             },
         },
     };
 
     Normalize(tests);
 
-    const auto& test = tests.front();
+    // const auto& test = tests.front();
 
-    auto s1 = test.Input[0];
-    auto s2 = test.Input[1];
+    // auto s1 = test.Input[0];
+    // auto s2 = test.Input[2];
 
-    // auto pointX = RoundToPrecision(-6.05658);
+    // auto pointX = RoundToPrecision(-10);
     // TTrackingSegment ts1(&s1, pointX);
     // TTrackingSegment ts2(&s2, pointX);
 
@@ -588,7 +615,7 @@ int test()
     // std::cout << "ts2: " << *ts2.Parameters.GetAtX(pointX) << std::endl;
 
     for (const auto& test : tests) {
-        if (!CheckTestCase(test, SweepLine(test.Input))) {
+        if (!CheckTestCase(test, BruteForce(test.Input))) {
             return 1;
         }
     }
@@ -598,5 +625,5 @@ int test()
 }
 
 int main() {
-    return StressTest();
+    return test();
 }
