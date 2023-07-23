@@ -19,6 +19,12 @@
 #include <cmath>
 #include <assert.h>
 
+bool DebugIsDisabled = true;
+
+#define debugStream \
+    if (DebugIsDisabled) {} \
+    else std::cerr
+
 static constexpr double Precision = 0.00001;
 
 double RoundToPrecision(double value, double precision = Precision) {
@@ -360,24 +366,30 @@ TIntersections SweepLine(const std::vector<TSegment>& input)
     TSweepingLine sweepLine;
     TIntersections result;
 
+    auto handleIntersections = [&] (const TPoint& eventPoint, const TSegment* left, const TSegment* right) {
+        if (left == nullptr || right == nullptr) {
+            return;
+        }
+        auto intersection = GetIntersection(*left, *right);
+        if (!intersection || *intersection < eventPoint) {
+            return;
+        }
+
+        debugStream << "found intersection point:" << *intersection << std::endl;
+
+        auto& item = queue[*intersection];
+
+        item.Intersecting.insert(left);
+        item.Intersecting.insert(right);
+    };
+
     auto addSegment = [&] (const TSegment* segment, const TPoint& eventPoint) {
+        debugStream << "adding segment:" << segment  << " value:" << *segment << std::endl;
         sweepLine.Add(segment, eventPoint.X);
 
         for (const auto* neighbor : sweepLine.GetNeighbors(segment)) {
-            if (neighbor == nullptr) {
-                continue;
-            }
-
-            auto intersection = GetIntersection(*segment, *neighbor);
-
-            if (!intersection || *intersection < eventPoint) {
-                continue;
-            }
-
-            auto& item = queue[*intersection];
-
-            item.Intersecting.insert(segment);
-            item.Intersecting.insert(neighbor);
+            debugStream << "check neighbor:" << neighbor << std::endl;
+            handleIntersections(eventPoint, segment, neighbor);
         }
     };
 
@@ -390,18 +402,22 @@ TIntersections SweepLine(const std::vector<TSegment>& input)
         }
 
         for (const auto* segment : event.Intersecting) {
+            debugStream << "handling intersection:" << eventPoint << " segment:" << *segment << std::endl;
             result[eventPoint].insert(*segment);
             sweepLine.Remove(segment);
         }
 
         for (const auto* segment : event.Intersecting) {
-            // auto moved = eventPoint;
-            // moved.X += Precision;
-            addSegment(segment, eventPoint);
+            auto moved = eventPoint;
+            moved.X += Precision;
+            addSegment(segment, moved);
         }
 
         for (const auto* segment : event.Ending) {
+            debugStream << "removing segment:" << eventPoint << " segment:" << *segment << std::endl;
+            auto [before, after] = sweepLine.GetNeighbors(segment);
             sweepLine.Remove(segment);
+            handleIntersections(eventPoint, before, after);
         }
 
         Verify(queue.begin() == current);
@@ -450,7 +466,7 @@ TPoint RandomPoint(int min, int max)
 int StressTest()
 {
     static const int SegmentsCount = 3;
-    static const int TestsCount = 100;
+    static const int TestsCount = 10000;
 
     int minValue = -10;
     int maxValue = 10;
@@ -537,16 +553,31 @@ int test()
                 {{RoundToPrecision(-1), RoundToPrecision(9)}, {{ {{-4, 0}, {-1, 9}}, {{-1, 9}, {6, -6}}, } }},
             },
         },
+        {
+            .Input = {{{-9 , -7}, {-1 , 7}}, {{-10 , -4}, {1 , 2}}, {{-6 , -1}, {8 , -3}}},
+            .Expected = {
+                {{RoundToPrecision(-6.05658), RoundToPrecision(-1.84901)}, {{ {{-10 , -4}, {1 , 2}}, {{-9 , -7}, {-1 , 7}}, } }},
+                {{RoundToPrecision(-5.60376), RoundToPrecision(-1.05659)}, {{ {{-9 , -7}, {-1 , 7}}, {{-6 , -1}, {8 , -3}}, } }},
+                {{RoundToPrecision(-4.81134), RoundToPrecision(-1.16979)}, {{ {{-10 , -4}, {1 , 2}}, {{-6 , -1}, {8 , -3}}, } }},
+            },
+        },
+        {
+            .Input = {{{-8 , 5}, {3 , -2}}, {{-5 , -4}, {5 , 0}}, {{-7 , -6}, {-4 , -3}}},
+            .Expected = {
+                {{RoundToPrecision(-5), RoundToPrecision(-4)}, {{ {{-5 , -4}, {5 , 0}}, {{-7 , -6}, {-4 , -3}}, } }},
+                {{RoundToPrecision(1.84211), RoundToPrecision(-1.26316)}, {{ {{-8 , 5}, {3 , -2}}, {{-5 , -4}, {5 , 0}}, } }}
+            },
+        },
     };
 
     Normalize(tests);
 
     const auto& test = tests.front();
 
-    // auto s1 = test.Input[2];
-    // auto s2 = test.Input[1];
+    auto s1 = test.Input[0];
+    auto s2 = test.Input[1];
 
-    // auto pointX = RoundToPrecision(2.29956);
+    // auto pointX = RoundToPrecision(-6.05658);
     // TTrackingSegment ts1(&s1, pointX);
     // TTrackingSegment ts2(&s2, pointX);
 
