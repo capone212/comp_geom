@@ -1,8 +1,14 @@
 #include <cstdlib>
+#include <memory>
 #include <tuple>
 #include <iostream>
 #include <vector>
 #include <set>
+#include <algorithm>
+#include <assert.h>
+#include <memory>
+
+////////////////////////////////////////////////////////////////////////////////////
 
 struct TPoint
 {
@@ -30,6 +36,70 @@ struct TOrderByY
         return std::tie(left.Y, left.X) < std::tie(right.Y, right.X);
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////////
+
+struct TNode;
+using PNode = std::shared_ptr<TNode>;
+
+struct TNode
+{
+    explicit TNode(std::optional<int> x, std::optional<int> y)
+        : X(x)
+        , Y(y)
+    {
+
+    }
+
+    std::optional<int> X;
+    std::optional<int> Y;
+
+    bool IsLeaf() const
+    {
+        return X.has_value() && Y.has_value();
+    }
+
+    PNode Left;
+    PNode Right;
+};
+
+PNode ConstructKdTreeRecursive(const std::vector<TPoint>& orderedByX, const std::vector<TPoint>& orderedByY, int depth = 0)
+{
+    assert(orderedByX.size() == orderedByY.size());
+
+    if (orderedByX.empty())
+    {
+        return {};
+    }
+
+    if (orderedByX.size() == 1) {
+        return std::make_shared<TNode>(orderedByX.front().X, orderedByX.front().Y);
+    }
+
+    auto root = std::make_shared<TNode>();
+
+    std::vector<TPoint> lowerByX;
+    std::vector<TPoint> lowerByY;
+
+    std::vector<TPoint> upeprByX;
+    std::vector<TPoint> upperByY;
+
+    return {};
+}
+
+PNode ConstructKdTree(const std::vector<TPoint>& input)
+{
+    auto orderedByX = input;
+    std::sort(orderedByX.begin(), orderedByX.end(), TOrderByX{});
+
+    auto orderedByY = input;
+    std::sort(orderedByY.begin(), orderedByY.end(), TOrderByY{});
+
+    return ConstructKdTreeRecursive(orderedByX, orderedByY);
+}
+
+
+////////////////////////////////////////////////////////////////////////////////////
 
 std::vector<TPoint> BruteForce(const std::vector<TPoint>& input, const TPoint& lower, const TPoint& upper)
 {
