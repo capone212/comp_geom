@@ -1,13 +1,24 @@
 #include <cstdlib>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <tuple>
 #include <iostream>
+#include <unordered_map>
 #include <vector>
 #include <set>
 #include <algorithm>
 #include <assert.h>
 #include <memory>
+#include <unordered_set>
+
+////////////////////////////////////////////////////////////////////////////////////
+
+bool DebugIsDisabled = true;
+
+#define debugStream \
+    if (DebugIsDisabled) {} \
+    else std::cerr
 
 ////////////////////////////////////////////////////////////////////////////////////
 
@@ -21,6 +32,39 @@ struct TPoint
         return X == other.X && Y == other.Y;
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////////
+
+template <typename T>
+inline void hash_combine(std::size_t &seed, const T &val) {
+    seed ^= std::hash<T>()(val) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+}
+
+// auxiliary generic functions to create a hash value using a seed
+template <typename T> inline void hash_val(std::size_t &seed, const T &val) {
+    hash_combine(seed, val);
+}
+
+template <typename T, typename... Types>
+inline void hash_val(std::size_t &seed, const T &val, const Types &... args) {
+    hash_combine(seed, val);
+    hash_val(seed, args...);
+}
+
+template <typename... Types>
+inline std::size_t hash_val(const Types &... args) {
+    std::size_t seed = 0;
+    hash_val(seed, args...);
+    return seed;
+}
+
+struct TPointHash {
+    std::size_t operator()(const TPoint& p) const {
+        return hash_val(p.X, p.Y);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////////
 
 struct TOrderByX
 {
@@ -37,6 +81,35 @@ struct TOrderByY
         return std::tie(left.Y, left.X) < std::tie(right.Y, right.X);
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////////
+
+std::ostream& operator <<(std::ostream& stream, const TPoint& point) {
+    stream << "{" << point.X << " , " << point.Y << "}";
+    return stream;
+}
+
+std::ostream& operator <<(std::ostream& stream, const std::vector<TPoint>& points) {
+    stream << "{ ";
+
+    for (const auto& point : points) {
+        stream << point << ", ";
+    }
+
+    stream << " }";
+    return stream;
+}
+
+std::ostream& operator <<(std::ostream& stream, const std::set<TPoint, TOrderByX>& points) {
+    stream << "{ ";
+
+    for (const auto& point : points) {
+        stream << point << ", ";
+    }
+
+    stream << " }";
+    return stream;
+}
 
 ////////////////////////////////////////////////////////////////////////////////////
 
@@ -86,6 +159,7 @@ PNode ConstructKdTreeRecursive(const std::vector<TPoint>& orderedByX, const std:
     }
 
     if (orderedByX.size() == 1) {
+        debugStream << "leaf node: " << orderedByX.front() << std::endl;
         return std::make_shared<TNode>(orderedByX.front().X, orderedByX.front().Y);
     }
 
@@ -102,6 +176,9 @@ PNode ConstructKdTreeRecursive(const std::vector<TPoint>& orderedByX, const std:
     if (depth % 2 == 0) {
         // Split by x
         auto median = orderedByX[(orderedByX.size()) / 2];
+
+        debugStream << "x median " << median << std::endl;
+
         root->X = median.X;
         lowerThanMedian = [median] (TPoint point) {
             return TOrderByX{}(point, median);
@@ -109,6 +186,9 @@ PNode ConstructKdTreeRecursive(const std::vector<TPoint>& orderedByX, const std:
     } else {
         // Split by Y
         auto median = orderedByY[orderedByY.size() / 2];
+
+        debugStream << "y median " << median << std::endl;
+
         root->Y = median.Y;
 
         lowerThanMedian = [median] (TPoint point) {
@@ -120,7 +200,7 @@ PNode ConstructKdTreeRecursive(const std::vector<TPoint>& orderedByX, const std:
     splitByPredicate(orderedByY, lowerByY, upperByY, lowerThanMedian);
 
     root->Left = ConstructKdTreeRecursive(lowerByX, lowerByY, depth + 1);
-    root->Right = ConstructKdTreeRecursive(upperByY, upperByY, depth + 1);
+    root->Right = ConstructKdTreeRecursive(upperByX, upperByY, depth + 1);
 
     return root;
 }
@@ -136,6 +216,10 @@ PNode ConstructKDTree(const std::vector<TPoint>& input)
     return ConstructKdTreeRecursive(orderedByX, orderedByY);
 }
 
+bool IsInRange(int value, int lower, int upper)
+{
+    return value >= lower && value <= upper;
+}
 
 void TraverseKDTree(PNode root, std::vector<TPoint>& results, TPoint lower, TPoint upper)
 {
@@ -146,9 +230,9 @@ void TraverseKDTree(PNode root, std::vector<TPoint>& results, TPoint lower, TPoi
     if (root->IsLeaf()) {
         auto point = TPoint{*root->X, *root->Y};
 
-        if (point == lower ||
-            point == upper || 
-            (TOrderByX()(lower, point) && TOrderByX()(point, lower)))
+        debugStream << "traverse check node: " << point << std::endl;
+
+        if (IsInRange(point.X, lower.X, upper.X) && IsInRange(point.Y, lower.Y, upper.Y))
         {
             results.push_back(point);
         }
@@ -158,6 +242,8 @@ void TraverseKDTree(PNode root, std::vector<TPoint>& results, TPoint lower, TPoi
     if (root->X) {
         auto x = *root->X;
 
+        debugStream << "traverse visit x edge: " << x  << std::endl;
+
         if (x >= lower.X) {
             TraverseKDTree(root->Left, results, lower, upper);
         }
@@ -166,11 +252,12 @@ void TraverseKDTree(PNode root, std::vector<TPoint>& results, TPoint lower, TPoi
         }
     } else {
         auto y = *root->Y;
+        debugStream << "traverse visit y edge: " << y  << std::endl;
 
         if (y >= lower.Y) {
             TraverseKDTree(root->Left, results, lower, upper);
         }
-        if (y <= lower.Y) {
+        if (y <= upper.Y) {
             TraverseKDTree(root->Right, results, lower, upper);
         }
     }
@@ -209,6 +296,76 @@ struct TTestCase
     std::set<TPoint, TOrderByX> Output;
 };
 
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+int RandomInRange(int min, int max)
+{
+    int total = std::abs(min) + max;
+    return rand() % total - std::abs(min);
+}
+
+TPoint RandomPoint(int min, int max)
+{
+    return {.X = RandomInRange(min, max), .Y = RandomInRange(min, max)};
+}
+
+void CheckTestCase(const TTestCase& testCase)
+{
+    auto results = KDTree(testCase.Input, testCase.Lower, testCase.Upper);
+    std::set<TPoint, TOrderByX> indexed(results.begin(), results.end());
+    bool failed = false;
+
+    if (std::ssize(results) != std::ssize(testCase.Output)) {
+        std::cout << "Result size does not match. Expected: " << std::ssize(testCase.Output) << " got: " << std::ssize(results) << std::endl;;
+        failed = true;
+    }
+
+    for (const auto& p : testCase.Output) {
+        if (indexed.count(p) == 0) {
+            std::cout << "Did not report expecting point: x: " << p.X << ", y:" << p.Y << std::endl;
+            failed = true;
+        }
+    }
+
+    for (const auto& p : results) {
+        if (testCase.Output.count(p) == 0) {
+            std::cout << "Unexpected point is reported: x: " << p.X << ", y:" << p.Y << std::endl;
+            failed = true;
+        }
+    }
+
+    if (failed) {
+        std::cout << "Input: " << testCase.Input << std::endl;
+        std::cout << "Expected output: " << testCase.Output << std::endl;
+
+        exit(-1);
+    }
+}
+
+void StressTest()
+{
+    static const int PointsCount = 1000;
+    std::unordered_set<TPoint, TPointHash> index;
+
+    for (int i = 0; i < PointsCount; ++i) {
+        index.insert(RandomPoint(0, 100));
+    }
+
+    TTestCase testCase = {
+        .Lower = {30, 30},
+        .Upper = {60, 60},
+    };
+
+    testCase.Input.assign(index.begin(), index.end());
+    auto output = BruteForce(testCase.Input, testCase.Lower, testCase.Upper);
+    testCase.Output.insert(output.begin(), output.end());
+
+    CheckTestCase(testCase);
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+
 int main()
 {
     std::vector<TTestCase> tests {
@@ -217,36 +374,21 @@ int main()
             .Lower = {0, 0},
             .Upper = {10, 10},
             .Output = {{0, 0}, {10, 10}},
+        },
+        {
+            .Input = { {0 , 6}, {9 , 1}, {6 , 2}, {0 , 9}, {3 , 5}, {2 , 6}, {7 , 5}, {2 , 7}, {3 , 6}, },
+            .Lower = {3, 3},
+            .Upper = {6, 6},
+            .Output = { {3 , 5}, {3 , 6}, },
         }
     };
 
     for (const auto& testCase : tests) {
-        auto results = KDTree(testCase.Input, testCase.Lower, testCase.Upper);
-        std::set<TPoint, TOrderByX> indexed(results.begin(), results.end());
-        bool failed = false;
+        CheckTestCase(testCase);
+    }
 
-        if (std::ssize(results) != std::ssize(testCase.Output)) {
-            std::cout << "Result size does not match. Expected: " << std::ssize(testCase.Output) << " got: " << std::ssize(results) << std::endl;;
-            failed = true;
-        }
-
-        for (const auto& p : testCase.Output) {
-            if (indexed.count(p) == 0) {
-                std::cout << "Did not report expecting point: x: " << p.X << ", y:" << p.Y << std::endl;
-                failed = true;
-            }
-        }
-
-        for (const auto& p : results) {
-            if (testCase.Output.count(p) == 0) {
-                std::cout << "Unexpected point is reported: x: " << p.X << ", y:" << p.Y << std::endl;
-                failed = true;
-            }
-        }
-
-        if (failed) {
-            exit(-1);
-        }
+    for (int i = 0; i < 1000; ++i) {
+        StressTest();
     }
 
     return 0;
