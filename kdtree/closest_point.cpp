@@ -19,7 +19,7 @@
 
 ////////////////////////////////////////////////////////////////////////////////////
 
-bool DebugIsDisabled = false;
+bool DebugIsDisabled = true;
 
 #define debugStream \
     if (DebugIsDisabled) {} \
@@ -386,7 +386,7 @@ std::vector<TPoint> KDTree(const std::vector<TPoint>& input, const TPoint& thePo
 std::vector<TPoint> BruteForce(const std::vector<TPoint>& input, const TPoint& thePoint)
 {
     TPoint result = input.front();
-    int minDistance = Distance(thePoint, result);
+    double minDistance = Distance(thePoint, result);
 
     for (const auto& p : input) {
         auto distance = Distance(thePoint, p);
@@ -457,7 +457,7 @@ void CheckTestCase(const TTestCase& testCase)
 
 void StressTest()
 {
-    static const int PointsCount = 1000;
+    static const int PointsCount = 100;
     std::unordered_set<TPoint, TPointHash> index;
 
     for (int i = 0; i < PointsCount; ++i) {
@@ -480,11 +480,11 @@ void StressTest()
 int main()
 {
     std::vector<TTestCase> tests {
-        // {
-        //     .Input = {{-10, -10}, {0, 0}, {10, 10}, {20, 20}},
-        //     .ThePoint = {19, 19},
-        //     .Output = {{20, 20}},
-        // },
+        {
+            .Input = {{-10, -10}, {0, 0}, {10, 10}, {20, 20}},
+            .ThePoint = {19, 19},
+            .Output = {{20, 20}},
+        },
         {
             .Input = { {0 , 6}, {9 , 1}, {6 , 2}, {0 , 9}, {3 , 5}, {2 , 6}, {7 , 5}, {2 , 7}, {3 , 6}, },
             .ThePoint = {6, 6},
@@ -496,9 +496,9 @@ int main()
         CheckTestCase(testCase);
     }
 
-    // for (int i = 0; i < 1000; ++i) {
-    //     StressTest();
-    // }
+    for (int i = 0; i < 1000; ++i) {
+        StressTest();
+    }
 
     return 0;
 }
