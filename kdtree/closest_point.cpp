@@ -135,7 +135,8 @@ struct TDistancePair
 
     bool operator<(const TDistancePair& other) const
     {
-        return Distance < other.Distance;
+        return std::tie(Distance, Point.X, Point.Y)
+            < std::tie(other.Distance, other.Point.X, other.Point.Y);
     }
 };
 
@@ -385,19 +386,23 @@ std::vector<TPoint> KDTree(const std::vector<TPoint>& input, const TPoint& thePo
 
 std::vector<TPoint> BruteForce(const std::vector<TPoint>& input, const TPoint& thePoint)
 {
-    TPoint result = input.front();
-    double minDistance = Distance(thePoint, result);
+    TDistancePair result{
+        .Distance = ::Distance(thePoint, input.front()),
+        .Point = input.front(),
+    };
 
     for (const auto& p : input) {
-        auto distance = Distance(thePoint, p);
-        if (distance < minDistance) {
-            minDistance = distance;
-            result = p;
-        }
+        auto current = TDistancePair {
+            .Distance = ::Distance(thePoint, p),
+            .Point = p,
+        };
 
+        if (current < result) {
+            result = current;
+        }
     }
 
-    return { result };
+    return { result.Point };
 }
 
 struct TTestCase
@@ -457,7 +462,7 @@ void CheckTestCase(const TTestCase& testCase)
 
 void StressTest()
 {
-    static const int PointsCount = 100;
+    static const int PointsCount = 1000;
     std::unordered_set<TPoint, TPointHash> index;
 
     for (int i = 0; i < PointsCount; ++i) {
@@ -465,7 +470,7 @@ void StressTest()
     }
 
     TTestCase testCase = {
-        .ThePoint = {30, 30},
+        .ThePoint = {31, 30},
     };
 
     testCase.Input.assign(index.begin(), index.end());
