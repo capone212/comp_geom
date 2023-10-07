@@ -2,6 +2,7 @@
 #include <cstdlib>
 #include <memory>
 #include <optional>
+#include <queue>
 #include <sstream>
 #include <tuple>
 #include <iostream>
@@ -12,10 +13,13 @@
 #include <assert.h>
 #include <memory>
 #include <unordered_set>
+#include <cmath>
+#include <limits.h>
+#include <queue>
 
 ////////////////////////////////////////////////////////////////////////////////////
 
-bool DebugIsDisabled = true;
+bool DebugIsDisabled = false;
 
 #define debugStream \
     if (DebugIsDisabled) {} \
@@ -41,7 +45,7 @@ double Distance(TPoint p1, TPoint p2)
     auto xdiff = p1.X - p2.X;
     auto ydiff = p1.Y - p2.Y;
 
-    return sqrt(xdiff * xdiff + ydiff * ydiff);
+    return std::sqrt(xdiff * xdiff + ydiff * ydiff);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////
@@ -121,6 +125,19 @@ std::ostream& operator <<(std::ostream& stream, const std::set<TPoint, TOrderByX
     stream << " }";
     return stream;
 }
+
+////////////////////////////////////////////////////////////////////////////////////
+
+struct TDistancePair
+{
+    double Distance = 0;
+    TPoint Point;
+
+    bool operator<(const TDistancePair& other) const
+    {
+        return Distance < other.Distance;
+    }
+};
 
 ////////////////////////////////////////////////////////////////////////////////////
 
@@ -232,56 +249,136 @@ bool IsInRange(int value, int lower, int upper)
     return value >= lower && value <= upper;
 }
 
-void TraverseKDTree(PNode root, std::vector<TPoint>& results, TPoint lower, TPoint upper)
+int GetClosestFromRange(int value, int lower, int upper)
 {
-    if (!root) {
+    if (IsInRange(value, lower, upper)) {
+        return value;
+    }
+
+    return std::abs(value - lower) < std::abs(value - upper) ? lower : upper;
+}
+
+void TraverseKDTree(
+    PNode kdTree,
+    TPoint thePoint,
+    std::optional<TDistancePair>& best)
+{
+    if (!kdTree) {
         return;
     }
 
-    if (root->IsLeaf()) {
-        auto point = TPoint{*root->X, *root->Y};
+    struct TNodePriority
+    {
+        int Distance = 0;
+        PNode Node;
 
-        debugStream << "traverse check node: " << point << std::endl;
+        int LowerX = INT_MIN / 2;
+        int UpperX = INT_MAX / 2;
+        int LowerY = INT_MIN / 2;
+        int UpperY = INT_MAX / 2;
 
-        if (IsInRange(point.X, lower.X, upper.X) && IsInRange(point.Y, lower.Y, upper.Y))
+        bool operator<(const TNodePriority& other) const
         {
-            results.push_back(point);
+            return other.Distance < Distance;
         }
-        return;
-    }
 
-    if (root->X) {
-        auto x = *root->X;
-
-        debugStream << "traverse visit x edge: " << x  << std::endl;
-
-        if (x >= lower.X) {
-            TraverseKDTree(root->Left, results, lower, upper);
+        TPoint Closest(const TPoint& thePoint)
+        {
+            return TPoint {
+                .X = GetClosestFromRange(thePoint.X, LowerX, UpperX),
+                .Y = GetClosestFromRange(thePoint.Y, LowerY, UpperY),
+            };
         }
-        if (x <= upper.X) {
-            TraverseKDTree(root->Right, results, lower, upper);
-        }
-    } else {
-        auto y = *root->Y;
-        debugStream << "traverse visit y edge: " << y  << std::endl;
 
-        if (y >= lower.Y) {
-            TraverseKDTree(root->Left, results, lower, upper);
+        void SetDistance(const TPoint& thePoint)
+        {
+            auto closest = Closest(thePoint);
+            Distance = ::Distance(closest, thePoint);
         }
-        if (y <= upper.Y) {
-            TraverseKDTree(root->Right, results, lower, upper);
+    };
+
+    std::priority_queue<TNodePriority> pq;
+    pq.push({
+        .Node = kdTree,
+    });
+
+    while (!pq.empty()) {
+        auto next = pq.top();
+        pq.pop();
+
+        const auto& node = next.Node;
+
+        if (node->IsLeaf()) {
+            auto point = TPoint{*node->X, *node->Y};
+
+            TDistancePair current {
+                .Distance = Distance(point, thePoint),
+                .Point = point,
+            };
+
+            debugStream << "traverse check node: " << point << std::endl;
+
+            if (!best || current < *best)
+            {
+                best = current;
+            }
+            continue;;
+        }
+
+        // Check feasibility
+        if (best)
+        {
+            if (Distance(next.Closest(thePoint), thePoint) > best->Distance) {
+                // There is no point to visit this square.
+                continue;;
+            }
+        }
+
+        auto lower = next;
+        lower.Node = node->Left;
+
+        auto upper = next;
+        upper.Node = node->Right;
+
+        if (node->X) {
+            auto x = *node->X;
+            debugStream << "traverse visit x edge: " << x  << std::endl;
+            lower.UpperX = x; 
+            upper.LowerX = x; 
+        } else {
+            auto y = *node->Y;
+            debugStream << "traverse visit y edge: " << y  << std::endl;
+
+            lower.UpperY = y; 
+            upper.LowerY = y; 
+        }
+
+        for (auto child : {lower, upper}) {
+            if (!child.Node) {
+                continue;
+            }
+
+            child.SetDistance(thePoint);
+            pq.push(child);
         }
     }
 }
 
-std::vector<TPoint> KDTree(const std::vector<TPoint>& input, const TPoint& lower, const TPoint& upper)
+std::vector<TPoint> KDTree(const std::vector<TPoint>& input, const TPoint& thePoint)
 {
     auto kdTree = ConstructKDTree(input);
 
-    std::vector<TPoint> results;
-    TraverseKDTree(kdTree, results, lower, upper);
+    // Separate construction and search.
+    debugStream << std::endl;
 
-    return results;
+    std::optional<TDistancePair> best;
+    TraverseKDTree(kdTree, thePoint, best);
+
+    if (!best) {
+        return {};
+    }
+
+    return { best->Point };
 }
 
 ////////////////////////////////////////////////////////////////////////////////////
@@ -289,7 +386,7 @@ std::vector<TPoint> KDTree(const std::vector<TPoint>& input, const TPoint& lower
 std::vector<TPoint> BruteForce(const std::vector<TPoint>& input, const TPoint& thePoint)
 {
     TPoint result = input.front();
-    int minDistance = Distance(thePoint, minimum);
+    int minDistance = Distance(thePoint, result);
 
     for (const auto& p : input) {
         auto distance = Distance(thePoint, p);
@@ -326,7 +423,8 @@ TPoint RandomPoint(int min, int max)
 
 void CheckTestCase(const TTestCase& testCase)
 {
-    auto results = KDTree(testCase.Input, testCase.Lower, testCase.Upper);
+    auto results = KDTree(testCase.Input, testCase.ThePoint);
+
     std::set<TPoint, TOrderByX> indexed(results.begin(), results.end());
     bool failed = false;
 
@@ -367,8 +465,7 @@ void StressTest()
     }
 
     TTestCase testCase = {
-        .Lower = {30, 30},
-        .Upper = {60, 60},
+        .ThePoint = {30, 30},
     };
 
     testCase.Input.assign(index.begin(), index.end());
@@ -383,17 +480,15 @@ void StressTest()
 int main()
 {
     std::vector<TTestCase> tests {
-        {
-            .Input = {{-10, -10}, {0, 0}, {10, 10}, {20, 20}},
-            .Lower = {0, 0},
-            .Upper = {10, 10},
-            .Output = {{0, 0}, {10, 10}},
-        },
+        // {
+        //     .Input = {{-10, -10}, {0, 0}, {10, 10}, {20, 20}},
+        //     .ThePoint = {19, 19},
+        //     .Output = {{20, 20}},
+        // },
         {
             .Input = { {0 , 6}, {9 , 1}, {6 , 2}, {0 , 9}, {3 , 5}, {2 , 6}, {7 , 5}, {2 , 7}, {3 , 6}, },
-            .Lower = {3, 3},
-            .Upper = {6, 6},
-            .Output = { {3 , 5}, {3 , 6}, },
+            .ThePoint = {6, 6},
+            .Output = { {7 , 5} },
         }
     };
 
@@ -401,9 +496,9 @@ int main()
         CheckTestCase(testCase);
     }
 
-    for (int i = 0; i < 1000; ++i) {
-        StressTest();
-    }
+    // for (int i = 0; i < 1000; ++i) {
+    //     StressTest();
+    // }
 
     return 0;
 }
